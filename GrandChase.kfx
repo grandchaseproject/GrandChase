@@ -1,0 +1,598 @@
+//=================================================================================================================================
+//** 상수 레지스터 선언
+//=================================================================================================================================
+//float4x4 g_BoneMatrix[100];                                              // 본 행렬( 아... 많다. )
+//float4x4 g_BoneMatrix_;
+
+float4   g_LightDir = { -0.52747703, 0.55944532, -0.63936609, 0.0 };      // 월드공간의 조명위치를 정규화한 값( 우린 조명 고정이죠.. )
+float4x4 g_mWorldViewProj;                                               // World * View * Projection
+float4x4 g_mWorld;                                                       // World
+float4	 g_camPos = {0,0,0,0};
+//float	 fOutLineWidth = 0.0019f;                                        // 엣지 굵기
+float	 fOutLineWidth = 0.0033f;                                        // 엣지 굵기
+float4   g_vEdgeColor = {0.0f, 0.0f, 0.0f, 1.0f};                        // 엣지 색상
+
+
+//=================================================================================================================================
+//** 텍스쳐 샘플러 선언
+//=================================================================================================================================
+texture g_BoneDataTexture;
+int BoneTexWidth;
+
+sampler boneTexSampler =
+sampler_state
+{
+	Texture = <g_BoneDataTexture>;
+};
+
+texture mainTexture;
+sampler mainTexSampler =
+sampler_state
+{
+	Texture = <mainTexture>;
+	MipFilter = LINEAR;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+};
+
+texture toonTexture;
+sampler toonTexSampler =
+sampler_state
+{
+	Texture = <toonTexture>;
+};
+//=================================================================================================================================
+//** VS Input/Output 구조체 선언
+//=================================================================================================================================
+struct VS_INPUT_SKIN
+{
+    float4 vPos                 : POSITION;
+    int    vBlendIndices        : BLENDINDICES;
+    float3 vNormal              : NORMAL;
+    float2 vTexCoord0           : TEXCOORD0;
+};
+
+struct VS_OUTPUT_CARTOON
+{
+    float4 Position             : POSITION;   // vertex position    
+	float3 worldNormal          : NORMAL;
+    float2 Tex0                 : TEXCOORD0;  // vertex texture coords
+    float2 Tex1                 : TEXCOORD1;  // vertex texture coords
+    float3 viewDir              : TEXCOORD2;  // vertex texture coords
+};
+
+struct VS_OUTPUT_NOCARTOON
+{
+    float4 Position             : POSITION;   // vertex position
+    float2 Tex0                 : TEXCOORD0;  // vertex texture coords
+};
+
+struct VS_OUTPUT_EDGE
+{
+    float4 Position             : POSITION;   // vertex position
+    float4 Color                : COLOR;	  // vertex color
+};
+
+
+//=================================================================================================================================
+//** PS Input/Output 구조체 선언
+//=================================================================================================================================
+struct PS_OUTPUT
+{
+    float4 RGBColor : COLOR0;  // Pixel color    
+};
+
+//=================================================================================================================================
+//** VS Function 정의
+//=================================================================================================================================
+/*
+float4x4 GetBoneMatrix(int index)
+{
+	return g_BoneMatrix[index];
+}
+*/
+float4x4 GetBoneMatrix(int index)
+{
+	int idx = index * 4;
+
+	
+	float4 uvCol = float4( ( (float)(idx % BoneTexWidth) + 0.5f) / BoneTexWidth, ( (float)(idx / BoneTexWidth) + 0.5f) / BoneTexWidth, 0.0f, 0.0f);
+	float4 uvShift = float4(1.0f/BoneTexWidth,0,0,0);
+
+	 float4x4 mat =
+	 {
+	  tex2Dlod(boneTexSampler, uvCol + uvShift * 0),
+	  tex2Dlod(boneTexSampler, uvCol + uvShift * 1.0f),
+	  tex2Dlod(boneTexSampler, uvCol + uvShift * 2.0f),
+	  tex2Dlod(boneTexSampler, uvCol + uvShift * 3.0f)
+	 };
+
+	 return mat;
+}
+
+VS_OUTPUT_CARTOON VS_RenderCartoon( VS_INPUT_SKIN input )
+{
+    VS_OUTPUT_CARTOON Output;
+    
+    // 애니메이션이된 정점을 투영공간으로 이동(Transform the position from object space to homogeneous projection space)
+    Output.Position = mul(mul(input.vPos, GetBoneMatrix(input.vBlendIndices) ), g_mWorldViewProj);
+    
+	// 본 행렬을 월드공간으로 보낸 뒤 정점의 노멀벡터를 곱해서 정점의 방향을 구한다.	
+	Output.worldNormal.xyz = normalize( mul(input.vNormal, mul(GetBoneMatrix(input.vBlendIndices), g_mWorld) ) );
+    
+    // 입력된 텍스쳐 좌표를 그대로 사용한다.
+    Output.Tex0 = input.vTexCoord0;
+    
+	// 정점의 방향과 조명방향을 내적해서 텍스쳐 X좌표 구한다.
+    Output.Tex1.x = dot( Output.worldNormal, g_LightDir.xyz );
+    
+	// 텍스쳐 Y좌표는 0으로 고정한다.
+    Output.Tex1.y = 0.0f;
+
+	float3 worldCamPos = mul(g_camPos.xyz, g_mWorld);
+	float3 worldVertexPos = mul(mul(input.vPos, GetBoneMatrix(input.vBlendIndices) ), g_mWorld);
+	Output.viewDir = worldCamPos - worldVertexPos;
+    return Output;
+}
+
+PS_OUTPUT PS_RenderCartoon( VS_OUTPUT_CARTOON In ) 
+{ 
+    PS_OUTPUT Output;
+/*
+	float4 rimColor = {1,1,1,1};
+	float4 lightColor = {1,1,1,1};
+	float4 specColor = {1,1,1,1};
+
+	float3 viewDir = normalize(In.viewDir);
+	float3 normal = normalize(In.worldNormal);
+
+	float NdotL = dot(g_LightDir.xyz, normal);
+	float harfLambert = NdotL*0.5 + 0.5;
+	float lightIntensity = smoothstep(0, 0.2, harfLambert);
+	lightColor.rgb = lightIntensity * lightColor.rgb; 
+
+	float3 halfVector = normalize(g_LightDir.xyz + viewDir);
+	float NdotH = dot(normal, halfVector);
+	float specularIntensity = smoothstep( 0.97, 1, NdotH) * 0.5; 
+	specColor = specularIntensity * specColor; 
+
+	float rimDot = 1 - dot(viewDir, normal);
+	float rimIntensity = rimDot * pow(NdotL, 0.1);
+	rimIntensity = smoothstep(0.80, 0.9 , rimIntensity) * 0.5; 
+	rimColor = rimColor * rimIntensity;  
+	  
+	Output.RGBColor = (tex2D(toonTexSampler, In.Tex1) - 0.5) + rimColor + lightColor + specColor;
+	Output.RGBColor *= tex2D(mainTexSampler, In.Tex0);
+*/
+	Output.RGBColor = tex2D(mainTexSampler, In.Tex0) + (tex2D(toonTexSampler, In.Tex1) - 0.5); 
+    return Output;
+}
+
+VS_OUTPUT_NOCARTOON RenderNoCartoonVS( VS_INPUT_SKIN input )
+{
+    VS_OUTPUT_NOCARTOON Output;
+	
+    // 애니메이션이된 정점을 투영공간으로 이동(Transform the position from object space to homogeneous projection space)  
+    Output.Position = mul( input.vPos, GetBoneMatrix(input.vBlendIndices) ); 
+    Output.Position = mul( Output.Position, g_mWorldViewProj );
+	
+    // 입력된 텍스쳐 좌표를 그대로 사용한다.
+    Output.Tex0 = input.vTexCoord0;
+    
+    return Output;
+}
+
+PS_OUTPUT RenderNoCartoonPS( VS_OUTPUT_NOCARTOON In ) 
+{ 
+    PS_OUTPUT Output;
+	Output.RGBColor = tex2D(mainTexSampler, In.Tex0);
+    return Output;
+}
+
+VS_OUTPUT_EDGE RenderBlackEdgeVS( VS_INPUT_SKIN input )
+{
+    VS_OUTPUT_EDGE Output;
+    float4 vNormalWorldSpace;
+    
+    // 애니메이션이된 정점을 투영공간으로 이동(Transform the position from object space to homogeneous projection space)  
+    Output.Position = mul( input.vPos, GetBoneMatrix(input.vBlendIndices) ); 
+    Output.Position = mul( Output.Position, g_mWorldViewProj );
+    
+    // Transform the normal from object space to world space    
+    vNormalWorldSpace = mul(input.vNormal, GetBoneMatrix(input.vBlendIndices) );
+    vNormalWorldSpace = normalize(mul( vNormalWorldSpace, g_mWorldViewProj ));
+    
+	float3 offset = normalize(vNormalWorldSpace.xyz) * fOutLineWidth * Output.Position.w;
+	Output.Position.xyz += offset;
+    //Output.Position += vNormalWorldSpace * fOutLineWidth;
+    
+    Output.Color = g_vEdgeColor;
+    
+    return Output;
+}
+
+PS_OUTPUT RenderBlackEdgePS( VS_OUTPUT_EDGE In ) 
+{ 
+    PS_OUTPUT Output;
+	Output.RGBColor = In.Color;
+    return Output;
+}
+
+VS_OUTPUT_CARTOON VS_RenderCartoonAlpha( VS_INPUT_SKIN input )
+{
+    VS_OUTPUT_CARTOON Output;
+    
+    // 애니메이션이된 정점을 투영공간으로 이동(Transform the position from object space to homogeneous projection space)
+    Output.Position = mul(mul(input.vPos, GetBoneMatrix(input.vBlendIndices) ), g_mWorldViewProj);
+    
+	// 본 행렬을 월드공간으로 보낸 뒤 정점의 노멀벡터를 곱해서 정점의 방향을 구한다.
+	Output.worldNormal = normalize( mul(input.vNormal, mul(GetBoneMatrix(input.vBlendIndices), g_mWorld) ) );
+    
+    // 입력된 텍스쳐 좌표를 그대로 사용한다.
+    Output.Tex0 = input.vTexCoord0;
+    
+	// 정점의 방향과 조명방향을 내적해서 텍스쳐 X좌표 구한다.
+    Output.Tex1.x = dot( Output.worldNormal, g_LightDir.xyz );
+    
+	// 텍스쳐 Y좌표는 0으로 고정한다.
+    Output.Tex1.y = 0.0f;
+    Output.viewDir = 0;
+    return Output;
+}
+
+PS_OUTPUT PS_RenderCartoonAlpha( VS_OUTPUT_CARTOON In ) 
+{ 
+    PS_OUTPUT Output;
+	Output.RGBColor = tex2D(mainTexSampler, In.Tex0) + (tex2D(toonTexSampler, In.Tex1) - 0.5);
+    return Output;
+}
+
+VS_OUTPUT_EDGE RenderBlackEdgeAlphaVS( VS_INPUT_SKIN input )
+{
+    VS_OUTPUT_EDGE Output;
+    float4 vNormalWorldSpace;
+    
+    // 애니메이션이된 정점을 투영공간으로 이동(Transform the position from object space to homogeneous projection space)  
+    Output.Position = mul( input.vPos, GetBoneMatrix(input.vBlendIndices) ); 
+    Output.Position = mul( Output.Position, g_mWorldViewProj );
+    
+    // Transform the normal from object space to world space    
+    vNormalWorldSpace = mul(input.vNormal, GetBoneMatrix(input.vBlendIndices) );
+    vNormalWorldSpace = normalize(mul( vNormalWorldSpace, g_mWorldViewProj ));
+    
+	float3 offset = normalize(vNormalWorldSpace.xyz) * fOutLineWidth * Output.Position.w;
+	Output.Position.xyz += offset;
+    //Output.Position += vNormalWorldSpace * fOutLineWidth;
+    
+    Output.Color = g_vEdgeColor;
+    
+    return Output;
+}
+
+PS_OUTPUT RenderBlackEdgeAlphaPS( VS_OUTPUT_EDGE In ) 
+{ 
+    PS_OUTPUT Output;
+	Output.RGBColor = In.Color;
+    return Output;
+}
+
+//--------------------------------------------------------------------------------------
+//** Techniques(테크닉)
+//--------------------------------------------------------------------------------------
+technique CartoonBlackEdge
+{
+    pass p0
+    {
+        Lighting		= FALSE;    
+
+        AlphaBlendEnable = TRUE;		AlphaTestEnable	 = TRUE;
+        CullMode        = CCW;        
+        ZEnable			= TRUE;			ZWriteEnable	= TRUE;
+        SrcBlend		= ONE;		     			DestBlend		= BOTHINVSRCALPHA;
+		
+        // Stage0
+        ColorOp[0]		= SelectArg1;
+        ColorArg1[0]	= Texture;
+        ColorArg2[0]	= Texture;
+		
+        // Stage1
+        ColorOp[1]      = ADDSIGNED;
+        ColorArg1[1]    = Texture;
+        ColorArg2[1]    = Current;
+        AddressU[1]     = Clamp;
+
+		// Alpha
+        AlphaOp[0]		= SelectArg1;	// Op는 디폴트
+        AlphaArg1[0]	= Texture;		// 텍스쳐의 알파채널에서 알파값을 얻는다.
+        AlphaArg2[0]	= Diffuse;
+
+        VertexShader = compile vs_3_0 VS_RenderCartoon();
+		PixelShader  = compile ps_3_0 PS_RenderCartoon();
+    }
+    pass p1
+    {
+        Lighting			= false;    
+        AlphaBlendEnable	= false;
+        AlphaTestEnable		= false;
+        SrcBlend			= One;
+        DestBlend			= Zero;
+        CullMode			= CW; 
+        ZEnable				= TRUE;
+        ZFunc				= LESS;
+        ZWriteEnable		= TRUE;	
+        ColorOp[0]		= SelectArg1;
+        ColorArg1[0]	= Diffuse;		
+
+        VertexShader = compile vs_3_0 RenderBlackEdgeVS();
+		PixelShader  = compile ps_3_0 RenderBlackEdgePS();
+    }
+
+}
+
+technique CartoonNoEdge
+{
+    pass p0
+    {
+        Lighting		= FALSE;    
+
+        AlphaBlendEnable = TRUE;		AlphaTestEnable	 = TRUE;
+        CullMode        = CCW;        
+        ZEnable			= TRUE;			ZWriteEnable	= TRUE;
+        SrcBlend		= ONE;		     			DestBlend		= BOTHINVSRCALPHA;
+				
+        // Stage0
+        ColorOp[0]		= SelectArg1;
+        ColorArg1[0]	= Texture;
+        ColorArg2[0]	= Texture;
+		
+        // Stage1
+        ColorOp[1]      = ADDSIGNED;
+        ColorArg1[1]    = Texture;
+        ColorArg2[1]    = Current;
+        AddressU[1]     = Clamp;
+
+		// Alpha
+        AlphaOp[0]		= SelectArg1;	// Op는 디폴트
+        AlphaArg1[0]	= Texture;		// 텍스쳐의 알파채널에서 알파값을 얻는다.
+        AlphaArg2[0]	= Diffuse;
+
+        VertexShader = compile vs_3_0 VS_RenderCartoon();
+		PixelShader  = compile ps_3_0 PS_RenderCartoon();
+    }
+}
+
+technique NoCartoonNoEdge
+{
+
+    pass p0
+    {
+        Lighting		= FALSE;    
+
+        AlphaBlendEnable = TRUE;		AlphaTestEnable	 = TRUE;
+        CullMode        = CCW;        
+        ZEnable			= TRUE;			ZWriteEnable	= TRUE;
+        SrcBlend		= ONE;		     			DestBlend		= BOTHINVSRCALPHA;
+		
+        // Stage0
+        ColorOp[0]		= SelectArg1;
+        ColorArg1[0]	= Texture;
+        ColorArg2[0]	= Texture;
+
+		// Alpha
+        AlphaOp[0]		= SelectArg1;	// Op는 디폴트
+        AlphaArg1[0]	= Texture;		// 텍스쳐의 알파채널에서 알파값을 얻는다.
+        AlphaArg2[0]	= Diffuse;
+
+        VertexShader = compile vs_3_0 RenderNoCartoonVS();
+		PixelShader  = compile ps_3_0 RenderNoCartoonPS();
+    }    
+}
+
+// 결과창에 나올때는 ZFUNC을 반대로 설정해주고, 면도 뒤집어서 그린다. Stencil?
+technique ResultModel
+{
+    pass p0
+    {
+        Lighting			= false;    
+        AlphaBlendEnable	= False;
+        CullMode			= CW;
+        ZEnable				= TRUE;
+        ZWriteEnable		= True;
+        ZFUNC				= GREATEREQUAL;
+        // Stage0
+        ColorOp[0]			= SelectArg1;
+        ColorArg1[0]		= Texture;
+
+        VertexShader = compile vs_3_0 RenderNoCartoonVS();
+		PixelShader  = compile ps_3_0 RenderNoCartoonPS();
+    }    
+}
+
+technique CartoonEdgeAlpha
+{
+    pass p0
+    {		
+        Lighting		= FALSE;    
+
+        AlphaBlendEnable = TRUE;		AlphaTestEnable	 = TRUE;
+        CullMode        = CCW;        
+        ZEnable			= TRUE;			ZWriteEnable	= TRUE;
+        //SrcBlend		= SRCALPHA; 	DestBlend		= INVSRCALPHA;
+		//SrcBlend		= INVSRCALPHA;     			DestBlend		= SRCALPHA;
+		//SrcBlend		= SRCCOLOR;     			DestBlend		= INVSRCCOLOR;
+		//SrcBlend		= INVSRCCOLOR;     			DestBlend		= SRCCOLOR;
+		SrcBlend		= ONE;		     			DestBlend		= BOTHINVSRCALPHA;
+		
+        // Stage0
+        ColorOp[0]		= SelectArg1;
+        ColorArg1[0]	= Texture;
+        ColorArg2[0]	= Texture;
+		
+        // Stage1
+        ColorOp[1]      = ADDSIGNED;
+        ColorArg1[1]    = Texture;
+        ColorArg2[1]    = Current;
+        AddressU[1]     = Clamp;
+
+		// Alpha
+        AlphaOp[0]		= SelectArg1;	// Op는 디폴트
+        AlphaArg1[0]	= Texture;		// 텍스쳐의 알파채널에서 알파값을 얻는다.
+        AlphaArg2[0]	= Diffuse;
+		
+        VertexShader = compile vs_3_0 VS_RenderCartoonAlpha();
+		PixelShader  = compile ps_3_0 PS_RenderCartoonAlpha();
+    }
+    pass p1
+    {
+        Lighting			= false;    
+        AlphaBlendEnable	= false;
+        AlphaTestEnable		= false;
+        SrcBlend			= One;
+        DestBlend			= Zero;
+        CullMode			= CW; 
+        ZEnable				= TRUE;
+        ZFunc				= LESS;
+        ZWriteEnable		= TRUE;	
+        ColorOp[0]		= Modulate;
+        ColorArg1[0]	= Diffuse;		
+
+        VertexShader = compile vs_3_0 RenderBlackEdgeAlphaVS();
+		PixelShader  = compile ps_3_0 RenderBlackEdgeAlphaPS();
+    }
+
+}
+
+technique CartoonNoEdgeAlpha
+{
+    pass p0
+    {
+        Lighting		= FALSE;    
+
+        AlphaBlendEnable = TRUE;		AlphaTestEnable	 = TRUE;
+        CullMode        = CCW;        
+        ZEnable			= TRUE;			ZWriteEnable	= TRUE;
+        SrcBlend		= ONE;		     			DestBlend		= BOTHINVSRCALPHA;
+		
+        // Stage0
+        ColorOp[0]		= SelectArg1;
+        ColorArg1[0]	= Texture;
+        ColorArg2[0]	= Texture;
+		
+        // Stage1
+        ColorOp[1]      = ADDSIGNED;
+        ColorArg1[1]    = Texture;
+        ColorArg2[1]    = Current;
+        AddressU[1]     = Clamp;
+
+		// Alpha
+        AlphaOp[0]		= SelectArg1;	// Op는 디폴트
+        AlphaArg1[0]	= Texture;		// 텍스쳐의 알파채널에서 알파값을 얻는다.
+        AlphaArg2[0]	= Diffuse;
+
+        VertexShader = compile vs_3_0 VS_RenderCartoonAlpha();
+		PixelShader  = compile ps_3_0 PS_RenderCartoonAlpha();
+    }
+}
+
+technique RenderState
+{
+    // 참고 사이트
+    // http://msdn.microsoft.com/library/default.asp?url=/archive/en-us/directx9_c_summer_03/directx/graphics/reference/effectfilereference/effectfileformat/states.asp
+    //pass p0
+    //{
+    // 이펙트 렌더링
+    //AlphaBlendEnable	= True;
+    //AlphaArg2[0]		= TFactor;
+    //CullMode			= NONE;
+    //}
+    pass p0
+    {
+        // 맵 렌더링 ( 플레이어 레이어 보다 멀리 있는 녀석들 )
+        //ZEnable				= True;
+        //ZWriteEnable		= True;
+        //AlphaTestEnable		= True;
+        AlphaBlendEnable	= True;
+        //AlphaFunc			= Lessequal;
+        MagFilter[0]		= Linear;
+        MinFilter[0]		= Linear;
+        MagFilter[1]		= Linear;
+        MinFilter[1]		= Linear;
+        AddressU[0]			= Clamp;
+        AddressV[0]			= Clamp;
+        SrcBlend			= SrcAlpha;
+        DestBlend			= InvSrcAlpha;
+    }
+    //pass p2
+    //{
+    // 궤적 렌더링
+    //AlphaBlendEnable	= True;
+    //CullMode			= NONE;
+    //}
+    //pass p3
+    //{
+    // P3M렌더링
+    //IndexedVertexBlendEnable	= True;
+    //VertexBlend					= 1WEIGHTS;
+    //}
+    //pass p4
+    //{
+    // P3M 알파렌더링
+    //IndexedVertexBlendEnable	= True;
+    //VertexBlend					= 1WEIGHTS;
+    //AlphaBlendEnable			= True;
+    //AlphaTestEnable				= True;
+    //AlphaArg1[0]				= Texture;
+    //AlphaArg2[0]				= TFactor;
+    //}
+    pass p1
+    {
+        // 맵 렌더링 ( 플레이어 레이어 보다 가까이 있는 녀석들 )
+        //ZEnable				= True;
+        //ZWriteEnable		= True;
+        //AlphaTestEnable		= True;
+        AlphaBlendEnable	= True;
+        //AlphaFunc			= Greater;
+        MagFilter[0]		= Linear;
+        MinFilter[0]		= Linear;
+        MagFilter[1]		= Linear;
+        MinFilter[1]		= Linear;
+        AddressU[0]			= Clamp;
+        AddressV[0]			= Clamp;
+        SrcBlend			= SrcAlpha;
+        DestBlend			= InvSrcAlpha;
+    }
+    pass p2
+    {
+        // 맵 렌더링 ( 플레이어 레이어 보다 멀리 있는 녀석들 )
+        //ZEnable				= True;
+        //ZWriteEnable		= True;
+        //AlphaTestEnable		= True;
+        AlphaBlendEnable	= True;
+        //AlphaFunc			= Lessequal;
+        MagFilter[0]		= Point;
+        MinFilter[0]		= Point;
+        MagFilter[1]		= Point;
+        MinFilter[1]		= Point;
+        AddressU[0]			= Clamp;
+        AddressV[0]			= Clamp;
+        SrcBlend			= SrcAlpha;
+        DestBlend			= InvSrcAlpha;
+    }
+    pass p3
+    {
+        // 맵 렌더링 ( 플레이어 레이어 보다 가까이 있는 녀석들 )
+        //ZEnable				= True;
+        //ZWriteEnable		= True;
+        //AlphaTestEnable		= True;
+        AlphaBlendEnable	= True;
+        //AlphaFunc			= Greater;
+        MagFilter[0]		= Point;
+        MinFilter[0]		= Point;
+        MagFilter[1]		= Point;
+        MinFilter[1]		= Point;
+        AddressU[0]			= Clamp;
+        AddressV[0]			= Clamp;
+        SrcBlend			= SrcAlpha;
+        DestBlend			= InvSrcAlpha;
+    }
+}
