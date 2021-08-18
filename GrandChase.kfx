@@ -9,9 +9,9 @@ float4x4 g_mWorldViewProj;                                               // Worl
 float4x4 g_mWorld;                                                       // World
 float4	 g_camPos = {0,0,0,0};
 //float	 fOutLineWidth = 0.0019f;                                        // ¿§Áö ±½±â
-float	 fOutLineWidth = 0.0033f;                                        // ¿§Áö ±½±â
+//float	 fOutLineWidth = 0.0033f;                                        // ¿§Áö ±½±â
+float	 fOutLineWidth = 0.0060f;                                        // ¿§Áö ±½±â
 float4   g_vEdgeColor = {0.0f, 0.0f, 0.0f, 1.0f};                        // ¿§Áö »ö»ó
-
 
 //=================================================================================================================================
 //** ÅØ½ºÃÄ »ùÇÃ·¯ ¼±¾ð
@@ -202,8 +202,8 @@ VS_OUTPUT_EDGE RenderBlackEdgeVS( VS_INPUT_SKIN input )
     vNormalWorldSpace = mul(input.vNormal, GetBoneMatrix(input.vBlendIndices) );
     vNormalWorldSpace = normalize(mul( vNormalWorldSpace, g_mWorldViewProj ));
     
-	float3 offset = normalize(vNormalWorldSpace.xyz) * fOutLineWidth * Output.Position.w;
-	Output.Position.xyz += offset;
+	float2 offset = normalize(vNormalWorldSpace.xy) * fOutLineWidth * Output.Position.w;
+	Output.Position.xy += offset;
     //Output.Position += vNormalWorldSpace * fOutLineWidth;
     
     Output.Color = g_vEdgeColor;
@@ -260,8 +260,8 @@ VS_OUTPUT_EDGE RenderBlackEdgeAlphaVS( VS_INPUT_SKIN input )
     vNormalWorldSpace = mul(input.vNormal, GetBoneMatrix(input.vBlendIndices) );
     vNormalWorldSpace = normalize(mul( vNormalWorldSpace, g_mWorldViewProj ));
     
-	float3 offset = normalize(vNormalWorldSpace.xyz) * fOutLineWidth * Output.Position.w;
-	Output.Position.xyz += offset;
+	float2 offset = normalize(vNormalWorldSpace.xy) * fOutLineWidth * Output.Position.w;
+	Output.Position.xy += offset;
     //Output.Position += vNormalWorldSpace * fOutLineWidth;
     
     Output.Color = g_vEdgeColor;
