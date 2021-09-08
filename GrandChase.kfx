@@ -138,32 +138,6 @@ VS_OUTPUT_CARTOON VS_RenderCartoon( VS_INPUT_SKIN input )
 PS_OUTPUT PS_RenderCartoon( VS_OUTPUT_CARTOON In ) 
 { 
     PS_OUTPUT Output;
-/*
-	float4 rimColor = {1,1,1,1};
-	float4 lightColor = {1,1,1,1};
-	float4 specColor = {1,1,1,1};
-
-	float3 viewDir = normalize(In.viewDir);
-	float3 normal = normalize(In.worldNormal);
-
-	float NdotL = dot(g_LightDir.xyz, normal);
-	float harfLambert = NdotL*0.5 + 0.5;
-	float lightIntensity = smoothstep(0, 0.2, harfLambert);
-	lightColor.rgb = lightIntensity * lightColor.rgb; 
-
-	float3 halfVector = normalize(g_LightDir.xyz + viewDir);
-	float NdotH = dot(normal, halfVector);
-	float specularIntensity = smoothstep( 0.97, 1, NdotH) * 0.5; 
-	specColor = specularIntensity * specColor; 
-
-	float rimDot = 1 - dot(viewDir, normal);
-	float rimIntensity = rimDot * pow(NdotL, 0.1);
-	rimIntensity = smoothstep(0.80, 0.9 , rimIntensity) * 0.5; 
-	rimColor = rimColor * rimIntensity;  
-	  
-	Output.RGBColor = (tex2D(toonTexSampler, In.Tex1) - 0.5) + rimColor + lightColor + specColor;
-	Output.RGBColor *= tex2D(mainTexSampler, In.Tex0);
-*/
 	Output.RGBColor = tex2D(mainTexSampler, In.Tex0) + (tex2D(toonTexSampler, In.Tex1) - 0.5); 
     return Output;
 }
@@ -204,6 +178,7 @@ VS_OUTPUT_EDGE RenderBlackEdgeVS( VS_INPUT_SKIN input )
     
 	float2 offset = normalize(vNormalWorldSpace.xy) * fOutLineWidth * Output.Position.w;
 	Output.Position.xy += offset;
+	Output.Position.z += 0.0001;
     //Output.Position += vNormalWorldSpace * fOutLineWidth;
     
     Output.Color = g_vEdgeColor;
@@ -262,6 +237,7 @@ VS_OUTPUT_EDGE RenderBlackEdgeAlphaVS( VS_INPUT_SKIN input )
     
 	float2 offset = normalize(vNormalWorldSpace.xy) * fOutLineWidth * Output.Position.w;
 	Output.Position.xy += offset;
+	Output.Position.z += 0.0001;
     //Output.Position += vNormalWorldSpace * fOutLineWidth;
     
     Output.Color = g_vEdgeColor;
