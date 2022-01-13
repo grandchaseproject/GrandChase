@@ -58,7 +58,6 @@ struct VS_OUTPUT_CARTOON
 	float3 worldNormal          : NORMAL;
     float2 Tex0                 : TEXCOORD0;  // vertex texture coords
     float2 Tex1                 : TEXCOORD1;  // vertex texture coords
-    float3 viewDir              : TEXCOORD2;  // vertex texture coords
 };
 
 struct VS_OUTPUT_NOCARTOON
@@ -115,10 +114,12 @@ VS_OUTPUT_CARTOON VS_RenderCartoon( VS_INPUT_SKIN input )
     VS_OUTPUT_CARTOON Output;
     
     // 애니메이션이된 정점을 투영공간으로 이동(Transform the position from object space to homogeneous projection space)
-    Output.Position = mul(mul(input.vPos, GetBoneMatrix(input.vBlendIndices) ), g_mWorldViewProj);
+
+	float4x4 boneMat = GetBoneMatrix(input.vBlendIndices);
+    Output.Position = mul(mul(input.vPos, boneMat ), g_mWorldViewProj);
     
 	// 본 행렬을 월드공간으로 보낸 뒤 정점의 노멀벡터를 곱해서 정점의 방향을 구한다.	
-	Output.worldNormal.xyz = normalize( mul(input.vNormal, mul(GetBoneMatrix(input.vBlendIndices), g_mWorld) ) );
+	Output.worldNormal.xyz = normalize( mul(input.vNormal, mul(boneMat, g_mWorld) ) );
     
     // 입력된 텍스쳐 좌표를 그대로 사용한다.
     Output.Tex0 = input.vTexCoord0;
@@ -128,10 +129,6 @@ VS_OUTPUT_CARTOON VS_RenderCartoon( VS_INPUT_SKIN input )
     
 	// 텍스쳐 Y좌표는 0으로 고정한다.
     Output.Tex1.y = 0.0f;
-
-	float3 worldCamPos = mul(g_camPos.xyz, g_mWorld);
-	float3 worldVertexPos = mul(mul(input.vPos, GetBoneMatrix(input.vBlendIndices) ), g_mWorld);
-	Output.viewDir = worldCamPos - worldVertexPos;
     return Output;
 }
 
@@ -168,12 +165,14 @@ VS_OUTPUT_EDGE RenderBlackEdgeVS( VS_INPUT_SKIN input )
     VS_OUTPUT_EDGE Output;
     float4 vNormalWorldSpace;
     
+	float4x4 boneMat = GetBoneMatrix(input.vBlendIndices);
+
     // 애니메이션이된 정점을 투영공간으로 이동(Transform the position from object space to homogeneous projection space)  
-    Output.Position = mul( input.vPos, GetBoneMatrix(input.vBlendIndices) ); 
+    Output.Position = mul( input.vPos, boneMat ); 
     Output.Position = mul( Output.Position, g_mWorldViewProj );
     
     // Transform the normal from object space to world space    
-    vNormalWorldSpace = mul(input.vNormal, GetBoneMatrix(input.vBlendIndices) );
+    vNormalWorldSpace = mul(input.vNormal, boneMat );
     vNormalWorldSpace = normalize(mul( vNormalWorldSpace, g_mWorldViewProj ));
     
 	float2 offset = normalize(vNormalWorldSpace.xy) * fOutLineWidth * Output.Position.w;
@@ -197,11 +196,12 @@ VS_OUTPUT_CARTOON VS_RenderCartoonAlpha( VS_INPUT_SKIN input )
 {
     VS_OUTPUT_CARTOON Output;
     
+	float4x4 boneMat = GetBoneMatrix(input.vBlendIndices);
     // 애니메이션이된 정점을 투영공간으로 이동(Transform the position from object space to homogeneous projection space)
-    Output.Position = mul(mul(input.vPos, GetBoneMatrix(input.vBlendIndices) ), g_mWorldViewProj);
+    Output.Position = mul(mul(input.vPos, boneMat ), g_mWorldViewProj);
     
 	// 본 행렬을 월드공간으로 보낸 뒤 정점의 노멀벡터를 곱해서 정점의 방향을 구한다.
-	Output.worldNormal = normalize( mul(input.vNormal, mul(GetBoneMatrix(input.vBlendIndices), g_mWorld) ) );
+	Output.worldNormal = normalize( mul(input.vNormal, mul(boneMat, g_mWorld) ) );
     
     // 입력된 텍스쳐 좌표를 그대로 사용한다.
     Output.Tex0 = input.vTexCoord0;
@@ -211,7 +211,6 @@ VS_OUTPUT_CARTOON VS_RenderCartoonAlpha( VS_INPUT_SKIN input )
     
 	// 텍스쳐 Y좌표는 0으로 고정한다.
     Output.Tex1.y = 0.0f;
-    Output.viewDir = 0;
     return Output;
 }
 
@@ -227,12 +226,13 @@ VS_OUTPUT_EDGE RenderBlackEdgeAlphaVS( VS_INPUT_SKIN input )
     VS_OUTPUT_EDGE Output;
     float4 vNormalWorldSpace;
     
+	float4x4 boneMat = GetBoneMatrix(input.vBlendIndices);
     // 애니메이션이된 정점을 투영공간으로 이동(Transform the position from object space to homogeneous projection space)  
-    Output.Position = mul( input.vPos, GetBoneMatrix(input.vBlendIndices) ); 
+    Output.Position = mul( input.vPos, boneMat ); 
     Output.Position = mul( Output.Position, g_mWorldViewProj );
     
     // Transform the normal from object space to world space    
-    vNormalWorldSpace = mul(input.vNormal, GetBoneMatrix(input.vBlendIndices) );
+    vNormalWorldSpace = mul(input.vNormal, boneMat );
     vNormalWorldSpace = normalize(mul( vNormalWorldSpace, g_mWorldViewProj ));
     
 	float2 offset = normalize(vNormalWorldSpace.xy) * fOutLineWidth * Output.Position.w;
@@ -264,7 +264,8 @@ technique CartoonBlackEdge
         AlphaBlendEnable = TRUE;		AlphaTestEnable	 = TRUE;
         CullMode        = CCW;        
         ZEnable			= TRUE;			ZWriteEnable	= TRUE;
-        SrcBlend		= ONE;		     			DestBlend		= BOTHINVSRCALPHA;
+        SrcBlend			= SrcAlpha;
+        DestBlend			= InvSrcAlpha;
 		
         // Stage0
         ColorOp[0]		= SelectArg1;
@@ -278,7 +279,7 @@ technique CartoonBlackEdge
         AddressU[1]     = Clamp;
 
 		// Alpha
-        AlphaOp[0]		= SelectArg1;	// Op는 디폴트
+        AlphaOp[0]		= MODULATE;		// Op는 디폴트
         AlphaArg1[0]	= Texture;		// 텍스쳐의 알파채널에서 알파값을 얻는다.
         AlphaArg2[0]	= Diffuse;
 
@@ -314,7 +315,8 @@ technique CartoonNoEdge
         AlphaBlendEnable = TRUE;		AlphaTestEnable	 = TRUE;
         CullMode        = CCW;        
         ZEnable			= TRUE;			ZWriteEnable	= TRUE;
-        SrcBlend		= ONE;		     			DestBlend		= BOTHINVSRCALPHA;
+        SrcBlend			= SrcAlpha;
+        DestBlend			= InvSrcAlpha;
 				
         // Stage0
         ColorOp[0]		= SelectArg1;
@@ -347,7 +349,8 @@ technique NoCartoonNoEdge
         AlphaBlendEnable = TRUE;		AlphaTestEnable	 = TRUE;
         CullMode        = CCW;        
         ZEnable			= TRUE;			ZWriteEnable	= TRUE;
-        SrcBlend		= ONE;		     			DestBlend		= BOTHINVSRCALPHA;
+        SrcBlend			= SrcAlpha;
+        DestBlend			= InvSrcAlpha;
 		
         // Stage0
         ColorOp[0]		= SelectArg1;
@@ -393,11 +396,8 @@ technique CartoonEdgeAlpha
         AlphaBlendEnable = TRUE;		AlphaTestEnable	 = TRUE;
         CullMode        = CCW;        
         ZEnable			= TRUE;			ZWriteEnable	= TRUE;
-        //SrcBlend		= SRCALPHA; 	DestBlend		= INVSRCALPHA;
-		//SrcBlend		= INVSRCALPHA;     			DestBlend		= SRCALPHA;
-		//SrcBlend		= SRCCOLOR;     			DestBlend		= INVSRCCOLOR;
-		//SrcBlend		= INVSRCCOLOR;     			DestBlend		= SRCCOLOR;
-		SrcBlend		= ONE;		     			DestBlend		= BOTHINVSRCALPHA;
+		SrcBlend			= SrcAlpha;
+        DestBlend			= InvSrcAlpha;
 		
         // Stage0
         ColorOp[0]		= SelectArg1;
@@ -447,7 +447,8 @@ technique CartoonNoEdgeAlpha
         AlphaBlendEnable = TRUE;		AlphaTestEnable	 = TRUE;
         CullMode        = CCW;        
         ZEnable			= TRUE;			ZWriteEnable	= TRUE;
-        SrcBlend		= ONE;		     			DestBlend		= BOTHINVSRCALPHA;
+        SrcBlend			= SrcAlpha;
+        DestBlend			= InvSrcAlpha;
 		
         // Stage0
         ColorOp[0]		= SelectArg1;
