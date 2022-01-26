@@ -264,7 +264,7 @@ technique CartoonBlackEdge
         AlphaBlendEnable = TRUE;		AlphaTestEnable	 = TRUE;
         CullMode        = CCW;        
         ZEnable			= TRUE;			ZWriteEnable	= TRUE;
-        SrcBlend			= SrcAlpha;
+        SrcBlend			= ONE;
         DestBlend			= InvSrcAlpha;
 		
         // Stage0
@@ -315,7 +315,7 @@ technique CartoonNoEdge
         AlphaBlendEnable = TRUE;		AlphaTestEnable	 = TRUE;
         CullMode        = CCW;        
         ZEnable			= TRUE;			ZWriteEnable	= TRUE;
-        SrcBlend			= SrcAlpha;
+        SrcBlend			= ONE;
         DestBlend			= InvSrcAlpha;
 				
         // Stage0
@@ -349,7 +349,7 @@ technique NoCartoonNoEdge
         AlphaBlendEnable = TRUE;		AlphaTestEnable	 = TRUE;
         CullMode        = CCW;        
         ZEnable			= TRUE;			ZWriteEnable	= TRUE;
-        SrcBlend			= SrcAlpha;
+        SrcBlend			= ONE;
         DestBlend			= InvSrcAlpha;
 		
         // Stage0
@@ -396,7 +396,7 @@ technique CartoonEdgeAlpha
         AlphaBlendEnable = TRUE;		AlphaTestEnable	 = TRUE;
         CullMode        = CCW;        
         ZEnable			= TRUE;			ZWriteEnable	= TRUE;
-		SrcBlend			= SrcAlpha;
+		SrcBlend			= ONE;
         DestBlend			= InvSrcAlpha;
 		
         // Stage0
@@ -447,7 +447,7 @@ technique CartoonNoEdgeAlpha
         AlphaBlendEnable = TRUE;		AlphaTestEnable	 = TRUE;
         CullMode        = CCW;        
         ZEnable			= TRUE;			ZWriteEnable	= TRUE;
-        SrcBlend			= SrcAlpha;
+        SrcBlend			= ONE;
         DestBlend			= InvSrcAlpha;
 		
         // Stage0
