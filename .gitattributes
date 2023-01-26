@@ -3,3 +3,4 @@
 # Large game files
 Texture/sbta25.kom filter=lfs diff=lfs merge=lfs -text
 Texture/sbta26.kom filter=lfs diff=lfs merge=lfs -text
+Texture/ui3.kom filter=lfs diff=lfs merge=lfs -text
